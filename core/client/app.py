@@ -44,10 +44,20 @@ class CapsWriterClient:
     管理的外部接口简洁：start()。
     """
     def __init__(self):
+        # 单实例检测: 一个机器启多个 client 没意义
+        # (caps_lock 会被多个 listener 触发, 导致重复录音)
+        from .single_instance import acquire, SingleInstanceError
+        try:
+            acquire()
+        except SingleInstanceError as e:
+            # 立刻报错退出, 不初始化任何资源
+            sys.stderr.write(f'\n[bold red]启动失败:[/bold red] {e}\n')
+            raise SystemExit(1)
+
         # 确保正确的工作目录
         self.base_dir = Path(__file__).parents[2]
         os.chdir(self.base_dir)
-            
+
         # 初始化事件循环
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
@@ -117,7 +127,7 @@ class CapsWriterClient:
     def start(self):
         """
         启动客户端 (唯一入口)
-        
+
         自动根据命令行参数识别模式。内部管理异步循环。
         """
 

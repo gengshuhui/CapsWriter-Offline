@@ -650,6 +650,10 @@ class EvdevKeyboardListener(_BaseEvdevListener):
                 cap = d.capabilities()
                 if self._EV_KEY in cap:
                     keys = cap.get(self._EV_KEY, [])
+                    # 跳过鼠标/触摸板设备 (有 EV_REL/EV_ABS)
+                    # 它们名字含 "Mouse" / "Touchpad" / "Touchscreen"
+                    if any(x in d.name for x in ('Mouse', 'Touchpad', 'Touchscreen', 'Trackpad')):
+                        continue
                     if ecodes.KEY_A in keys or ecodes.KEY_CAPSLOCK in keys:
                         devs.append(d)
             except (OSError, PermissionError):
