@@ -84,18 +84,16 @@ class ClientConfig:
     #   None                  → 自动 (推荐, 默认会跟随 PipeWire 默认 source)
     #   整数索引 (如 7)       → sounddevice 的设备索引 (见 `python -c "import sounddevice; print(sounddevice.query_devices())"`)
     #   字符串关键字 (如 'jabra', 'usb') → 按设备名做大小写不敏感的子串匹配
-    #   完整名称 (如 'Jabra EVOLVE 30 II') → 完全匹配优先
+    # 音频输入设备 (None=int/str=PipeWire/PulseAudio 默认设备; int=设备索引; str=设备名子串)
     input_device = None
 
-    # 录音采样率 (Hz). None = 自动跟随设备默认采样率, 推荐 16000 (与 ASR 模型对齐)
-    # 部分廉价 USB 麦 (如 Jabra EVOLVE 30 II) 默认采样率是 48000, 自动重采样即可
+    # 录音采样率 (Hz). None = 跟随设备默认采样率
     input_sample_rate = None
 
-    # PulseAudio/PipeWire source 名 (Linux 桌面常见, 此时 sounddevice 看不到物理麦)
-    # 用 `pactl list sources short` 查看 source 列表, 例如:
-    #   alsa_input.usb-GN_Audio_A_S_Jabra_EVOLVE_30_II_00017CA84B6209-00.mono-fallback.5
-    # 留 None 时由 PipeWire 默认 source 决定 (通常是最近激活的输入设备)
-    input_pulse_source = None  # 例: 'alsa_input.usb-GN_Audio_A_S_Jabra_EVOLVE_30_II_00017CA84B6209-00.mono-fallback.5'
+    # PipeWire/PulseAudio source 名 (Linux 上 sounddevice 看不到物理麦时用)
+    # 例: 'alsa_input.usb-GN_Audio_A_S_Jabra_EVOLVE_30_II_00017CA84B6209-00.mono-fallback.5'
+    # 留 None 由 PipeWire 默认 source 决定 (通常是最近激活的输入设备)
+    input_pulse_source = None
 
     file_seg_duration = 60      # 转录文件时分段长度
     file_seg_overlap = 4        # 转录文件时分段重叠

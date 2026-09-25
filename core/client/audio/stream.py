@@ -111,21 +111,19 @@ class AudioStreamManager:
             logger.debug("音频流已在运行，跳过启动")
             return self.state.stream
 
-        # 检测音频设备 (支持按配置显式选择)
+        # 检测音频设备 (None = 由 PipeWire/PulseAudio 自动选默认 source)
         try:
             from config_client import ClientConfig as _Config
             spec = getattr(_Config, 'input_device', None)
 
-            # 在 PipeWire/Pulse 接管 ALSA 的 Linux 桌面环境 (如 Ubuntu GNOME),
-            # sounddevice 看不到物理设备名, 只能看到 pipewire/pulse/default 三个虚拟桥。
-            # 对此, 我们额外支持: 通过 PulseAudio source 名选择物理麦。
+            # Pulse source 强制指定 (可选): 设置 PULSE_SOURCE 环境变量
+            # sd.InputStream 不直接接受 source 名, 但 PULSE_SOURCE 环境变量
+            # 能让 PipeWire/PulseAudio 把所有桥接设备都路由到指定 source
             pulse_source = getattr(_Config, 'input_pulse_source', None)
             if pulse_source:
-                os.environ.setdefault('PULSE_SOURCE', pulse_source)
-                logger.info(f"已设置环境变量 PULSE_SOURCE={pulse_source}")
+                os.environ['PULSE_SOURCE'] = pulse_source
 
-            chosen = self._resolve_input_device(spec, pulse_source)
-            device = chosen
+            device = self._resolve_input_device(spec)
             self._channels = min(2, device['max_input_channels'])
             device_name = device.get('name', '未知设备')
             console.print(
@@ -201,92 +199,41 @@ class AudioStreamManager:
                 self.state.stream = None
 
     @staticmethod
-    def _resolve_input_device(spec, pulse_source: str = None) -> dict:
+    def _resolve_input_device(spec) -> dict:
         """
-        根据 spec 选择输入设备
+        按 spec 选输入设备 (Linux 简化版).
 
         spec:
-            None / ''     → 由 sounddevice/PipeWire 自动选默认输入设备
-            int            → 按索引选
-            str (子串)     → 按设备名做大小写不敏感子串匹配 (首选 in_channels>0 的)
-            str (完整名)   → 完全匹配 (含 hostapi 路径时也接受)
-
-        pulse_source:
-            在 PipeWire 接管 ALSA 的 Linux 桌面环境, sounddevice 看不到物理麦名。
-            此时会从 `pactl list sources short` 解析所有 Pulse source,
-            找到名字最匹配 pulse_source (含子串) 的那个, 然后返回其底层 hostapi 索引。
-            同时设置环境变量 PULSE_SOURCE 让 sd.InputStream 真正用上它。
+            None / ''     → 默认输入设备 (由 PipeWire/PulseAudio 决定)
+            int            → 按 sd 设备索引
+            str            → 按设备名 (大小写不敏感) 子串匹配
         """
         import sounddevice as sd
-        import os
 
-        # 1) Pulse source 名 → 找 hostapi 设备
-        if pulse_source:
-            for i, d in enumerate(sd.query_devices()):
-                if d['max_input_channels'] <= 0:
-                    continue
-                # PipeWire/Pulse 把虚拟桥接设备注册到 ALSA hostapi,
-                # 设备名是 'pipewire' / 'pulse' / 'default'
-                name_l = d['name'].lower()
-                if name_l not in ('pipewire', 'pulse', 'default'):
-                    continue
-                # sd 的设备名不会显示 Pulse source 名, 但环境变量 PULSE_SOURCE
-                # 会让所有 pulse 桥接设备都从指定 source 取流
-                os.environ['PULSE_SOURCE'] = pulse_source
-                return d
-
-        # 2) 显式 None/空 → 默认
         if spec is None or spec == '':
             return sd.query_devices(kind='input')
 
-        # 3) 整数索引
         if isinstance(spec, int):
             dev = sd.query_devices(spec)
             if dev['max_input_channels'] <= 0:
                 raise RuntimeError(f"设备 [{spec}] {dev['name']} 不支持输入")
             return dev
 
-        # 4) 字符串 → 子串匹配 (忽略大小写)
         if isinstance(spec, str):
             needle = spec.lower().strip()
-            candidates = []
             for i, d in enumerate(sd.query_devices()):
                 if d['max_input_channels'] <= 0:
                     continue
-                name = d['name'].lower()
-                if needle == name:
-                    return d  # 完全匹配优先
-                if needle in name:
-                    candidates.append((i, d))
+                if needle in d['name'].lower():
+                    return d
+            avail = '\n  '.join(
+                f'[{i}] {d["name"]}'
+                for i, d in enumerate(sd.query_devices())
+                if d['max_input_channels'] > 0
+            )
+            raise RuntimeError(f"未找到名称含 '{spec}' 的输入设备。\n可用:\n  {avail}")
 
-            if not candidates:
-                # 列出可用输入设备, 帮用户排错
-                inputs = [(i, d['name']) for i, d in enumerate(sd.query_devices())
-                          if d['max_input_channels'] > 0]
-                avail = '\n  '.join(f'[{i}] {n}' for i, n in inputs)
-                # 附加 Pulse source 列表 (如果有)
-                pulse_hint = ''
-                try:
-                    out = os.popen("pactl list sources short 2>/dev/null | awk '{print $2}'").read()
-                    if out.strip():
-                        pulse_hint = '\n\n可用的 Pulse source:\n  ' + '\n  '.join(
-                            s for s in out.strip().split('\n') if s
-                        )
-                except Exception:
-                    pass
-                raise RuntimeError(
-                    f"未找到名称含 '{spec}' 的输入设备。\n"
-                    f"可用 sounddevice 设备:\n  {avail}"
-                    f"{pulse_hint}\n\n"
-                    f"提示: 在 PipeWire 接管的环境下，请改用 config_client.input_pulse_source\n"
-                    f"      设置 Pulse source 名 (如 'alsa_input.usb-GN_Audio...')"
-                )
-            if len(candidates) > 1:
-                names = '\n  '.join(f'[{i}] {d["name"]}' for i, d in candidates)
-                logger.warning(f"'{spec}' 匹配到多个设备，使用第一个:\n  {names}")
-            return candidates[0][1]
-
-        raise TypeError(f"input_device 必须是 None / int / str, 当前: {type(spec).__name__}")
+        raise TypeError(f"input_device 必须是 None / int / str")
 
     def reopen(self) -> Optional[sd.InputStream]:
         """

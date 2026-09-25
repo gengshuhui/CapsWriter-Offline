@@ -675,7 +675,6 @@ class EvdevKeyboardListener(_BaseEvdevListener):
             data = _Data()
             data.vkCode = code
             data.scanCode = code
-            sys.stderr.write(f'[evdev-shim] KB event: code={code} msg=0x{msg:04x} value={event.value}\n')
             try:
                 ret = self._win32_event_filter(msg, data)
                 if ret is False:
