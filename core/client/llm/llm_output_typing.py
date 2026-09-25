@@ -6,7 +6,17 @@ LLM Typing 输出模式
 - paste=False: 实时流式 write，每个字都打出来
 """
 import asyncio
-import keyboard
+import sys
+
+# Windows / Linux 分支: Windows 用 keyboard 库, Linux 用 pynput (evdev-shim 替换为 evdev.UInput)
+if sys.platform == 'win32':
+    import keyboard
+else:
+    from pynput import keyboard as _pynput_kb
+    # 用一个简单的 _kb_write 兼容 keyboard.write 的接口
+    def _kb_write(text):
+        _pynput_kb.Controller().type(text)
+    keyboard = type('K', (), {'write': staticmethod(_kb_write)})()
 
 from config_client import ClientConfig as Config
 from core.tools.asyncio_to_thread import to_thread

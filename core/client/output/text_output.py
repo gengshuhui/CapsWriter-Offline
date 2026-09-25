@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import platform
+import sys
 from typing import Optional
 import re
 
@@ -139,9 +140,18 @@ class TextOutput:
 
         使用 keyboard.write 替代 pynput.keyboard.Controller.type()，
         避免与中文输入法冲突。
+        Linux 上 keyboard.write 需要 root, 改用 pynput Controller.type
+        (runtime hook 已把它替换为 evdev.UInput, 不需要 root).
 
         Args:
             text: 要输出的文本
         """
         logger.debug(f"使用打字方式输出文本，长度: {len(text)}")
-        keyboard.write(text)
+        try:
+            if sys.platform == 'win32':
+                keyboard.write(text)
+            else:
+                # Linux/macOS: 用 pynput Controller (evdev-shim 已接管)
+                pynput_keyboard.Controller().type(text)
+        except Exception as e:
+            logger.warning(f"模拟打字失败: {e}")

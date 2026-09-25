@@ -188,3 +188,11 @@ release
 *.exe
 
 models/**/*.cfg
+# llama.cpp Linux 二进制 (运行时下载, 不入仓)
+core/server/engines/llama/bin/LICENSE
+core/server/engines/llama/bin/ggml-rpc-server
+core/server/engines/llama/bin/lib*.so*
+core/server/engines/llama/bin/llama-*
+core/server/engines/llama/bin/llama
+core/server/engines/llama/bin/llama-cli
+core/server/engines/llama/bin/libmtmd.so*

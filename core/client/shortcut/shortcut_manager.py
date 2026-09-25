@@ -89,6 +89,17 @@ class ShortcutManager:
             task.threshold = shortcut.get_threshold(Config.threshold)
             self.tasks[shortcut.key] = task
 
+    # Linux 上 pynput._util.win32 不存在, 用 evdev-shim 提供的 Key
+    # 重新 import key_mapper 以确保 shim 已生效
+    def _reload_mapper(self):
+        """Linux: 重新加载 key_mapper 以使用 evdev shim 的 Key"""
+        import importlib
+        from core.client.shortcut import key_mapper as _km
+        importlib.reload(_km)
+        # 更新本模块的全局引用
+        import sys as _sys
+        self._key_mapper = _sys.modules['core.client.shortcut.key_mapper']
+
     # ========== 监听器创建 ==========
 
     def create_keyboard_filter(self):

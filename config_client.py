@@ -34,7 +34,17 @@ class ClientConfig:
 
     threshold    = 0.3          # 快捷键触发阈值（秒）
 
-    paste        = False        # 是否以写入剪切板然后模拟 Ctrl-V 粘贴的方式输出结果
+    paste        = True         # 输出方式: True=粘贴 (pyclip.copy + XTestFakeKeyEvent Ctrl+V)
+                               #                False=逐字模拟 (仅 ASCII 可用, 中文失效)
+                               #
+                               # **强烈建议保持 True**, 原因:
+                               # - Linux 上 X server 不扫描运行时新建的 evdev UInput 设备,
+                               #   所以逐字模拟路径几乎不可用.
+                               # - XTestFakeKeyEvent 的 detail 是 X server keycode (1 byte),
+                               #   只能模拟 ASCII 字符, 无法发任意 Unicode.
+                               # - 粘贴路径 (pyclip.copy + Ctrl+V) 中英文 / emoji / Unicode 全部 OK,
+                               #   绕开 X11 输入法拦截 (ibus 等不拦截 Ctrl+V).
+                               # - 实测在普通文本应用中正常工作.
     restore_clip = True         # 模拟粘贴后是否恢复剪贴板
     paste_apps   = ['WeiXin.exe', 'Telegram.exe']  # 匹配时强制粘贴
 
@@ -68,6 +78,24 @@ class ClientConfig:
 
     mic_seg_duration = 60       # 麦克风听写时分段长度：60秒
     mic_seg_overlap = 4         # 麦克风听写时分段重叠：4秒
+
+    # 音频输入设备 (None = 由 PipeWire/PulseAudio 自动选择默认 source)
+    # 可以指定:
+    #   None                  → 自动 (推荐, 默认会跟随 PipeWire 默认 source)
+    #   整数索引 (如 7)       → sounddevice 的设备索引 (见 `python -c "import sounddevice; print(sounddevice.query_devices())"`)
+    #   字符串关键字 (如 'jabra', 'usb') → 按设备名做大小写不敏感的子串匹配
+    #   完整名称 (如 'Jabra EVOLVE 30 II') → 完全匹配优先
+    input_device = None
+
+    # 录音采样率 (Hz). None = 自动跟随设备默认采样率, 推荐 16000 (与 ASR 模型对齐)
+    # 部分廉价 USB 麦 (如 Jabra EVOLVE 30 II) 默认采样率是 48000, 自动重采样即可
+    input_sample_rate = None
+
+    # PulseAudio/PipeWire source 名 (Linux 桌面常见, 此时 sounddevice 看不到物理麦)
+    # 用 `pactl list sources short` 查看 source 列表, 例如:
+    #   alsa_input.usb-GN_Audio_A_S_Jabra_EVOLVE_30_II_00017CA84B6209-00.mono-fallback.5
+    # 留 None 时由 PipeWire 默认 source 决定 (通常是最近激活的输入设备)
+    input_pulse_source = None  # 例: 'alsa_input.usb-GN_Audio_A_S_Jabra_EVOLVE_30_II_00017CA84B6209-00.mono-fallback.5'
 
     file_seg_duration = 60      # 转录文件时分段长度
     file_seg_overlap = 4        # 转录文件时分段重叠

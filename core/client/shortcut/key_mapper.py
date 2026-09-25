@@ -2,22 +2,71 @@
 """
 按键映射相关
 
-处理按键名称和虚拟键码之间的转换，以及相关常量定义
+处理按键名称和虚拟键码之间的转换，以及相关常量定义。
 """
 
-from pynput import keyboard
-from pynput._util.win32 import KeyTranslator
-from . import logger
+import sys
 
+if sys.platform == 'win32':
+    from pynput import keyboard
+    from pynput._util.win32 import KeyTranslator
+    _key_translator = KeyTranslator()
+    # 特殊键 VK 映射（从 pynput 复制）
+    _SPECIAL_KEYS = {
+        key.value.vk: key
+        for key in keyboard.Key
+    }
+else:
+    # Linux / macOS: 直接构造 VK 映射表 (pynput 在这些平台上没有 KeyTranslator / Key.value.vk)
+    _key_translator = None
+    # 让 pynput.keyboard.Key 能被 import (即使用我们的 evdev shim)
+    from pynput import keyboard as _kb
 
-# 创建键盘翻译器实例（用于 VK 到字符的转换）
-_key_translator = KeyTranslator()
+    # evdev key code -> 工程用的 key_name 映射 (Linux 上 data.vkCode 就是 evdev code)
+    # 工程代码 self.tasks 用 'caps_lock', 'x1', 'x2' 等作 key
+    _VK_TO_NAME = {
+        # modifiers (evdev KEY_* 常量值与 X11 keysym 略有差异, 选最常见)
+        42: 'caps_lock',   # KEY_CAPSLOCK
+        58: 'caps_lock',
+        29: 'ctrl_l',      # KEY_LEFTCTRL
+        97: 'ctrl_r',      # KEY_RIGHTCTRL
+        56: 'alt_l',       # KEY_LEFTALT
+        100: 'alt_r',      # KEY_RIGHTALT
+        42: 'shift_l',     # KEY_LEFTSHIFT
+        54: 'shift_r',     # KEY_RIGHTSHIFT
+        125: 'cmd_l',      # KEY_LEFTMETA
+        126: 'cmd_r',      # KEY_RIGHTMETA
+        # 常用键
+        14: 'backspace',
+        28: 'enter', 96: 'enter',
+        15: 'tab',
+        57: 'space',
+        1:  'esc',
+        102: 'home',
+        107: 'end',
+        103: 'up',
+        108: 'down',
+        105: 'left',
+        106: 'right',
+        109: 'page_down',
+        104: 'page_up',
+        110: 'insert',
+        139: 'menu',
+        119: 'pause',
+        99:  'print_screen',
+        69:  'num_lock',
+        70:  'scroll_lock',
+        # F1-F12
+        59: 'f1', 60: 'f2', 61: 'f3', 62: 'f4',
+        63: 'f5', 64: 'f6', 65: 'f7', 66: 'f8',
+        67: 'f9', 68: 'f10', 87: 'f11', 88: 'f12',
+        # F13-F24
+        183: 'f13', 184: 'f14', 185: 'f15', 186: 'f16',
+        187: 'f17', 188: 'f18', 189: 'f19', 190: 'f20',
+        191: 'f21', 192: 'f22', 193: 'f23', 194: 'f24',
+    }
+    _SPECIAL_KEYS = {}  # 兼容旧代码, Linux 上 VkMapper.vk_to_name 用 _VK_TO_NAME 优先
 
-# 特殊键 VK 映射（从 pynput 复制）
-_SPECIAL_KEYS = {
-    key.value.vk: key
-    for key in keyboard.Key
-}
 
 # 小键盘按键映射（VK -> 名称）
 NUMPAD_KEYS = {
@@ -95,6 +144,10 @@ class KeyMapper:
         if vk in NUMPAD_KEYS:
             return NUMPAD_KEYS[vk]
 
+        # Linux: 先用 _VK_TO_NAME 映射 (caps_lock 等)
+        if sys.platform != 'win32' and vk in _VK_TO_NAME:
+            return _VK_TO_NAME[vk]
+
         # 使用 pynput 的 KeyTranslator 获取字符（字母、数字、符号键）
         try:
             params = _key_translator(vk, is_press=True)
@@ -102,6 +155,13 @@ class KeyMapper:
                 return params['char']
         except Exception:
             pass
+
+        # Linux 普通字符键: 直接当 ASCII 字符 (evdev code < 256 = ASCII 码)
+        if sys.platform != 'win32' and 0 <= vk < 256:
+            try:
+                return chr(vk)
+            except ValueError:
+                pass
 
         # 未知键码，返回 vk_ 格式
         return f'vk_{vk}'
